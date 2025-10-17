@@ -1,25 +1,14 @@
-# Core
-pydantic>=2.8
-pyyaml>=6.0.1
-regex>=2024.5.15
-# rapidfuzz>=3.9.6
-# pint>=0.23
+### Core
+pydantic==2.12.2
+pyyaml==6.0.3
+regex==2025.9.18
 
-# NLP
-# spacy>=3.7.5
-# negspacy>=1.0.3
+### Queue (пример с RQ; можно заменить на Celery/Arq)
+rq==2.6.0
+redis==6.4.0
 
-# Embeddings (S2) - можно отключить, если не нужно на хакатоне
-# sentence-transformers>=3.0.1
-# faiss-cpu>=1.8.0.post1
-
-# IO
-# ujson>=5.10.0
-# orjson>=3.10.7
-
-# Queue (пример с RQ; можно заменить на Celery/Arq)
-rq==1.15.1
-redis>=5.0.7
-
-# Optional PDF utilities if you hook S0 here
-pymupdf>=1.24.9
+### PDF parsing с Docling
+docling==2.57.0
+torch==2.2.2
+pymupdf==1.26.5
+numpy==1.26.4

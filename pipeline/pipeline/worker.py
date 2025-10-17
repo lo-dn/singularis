@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Optional, List
 
 from rq import Worker, Queue
-from rq.connections import Connection
 import redis
 
 from pipeline.s1 import run_s1
@@ -199,9 +198,9 @@ def run_s0(doc_id: str):
 def main():
     redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
     conn = redis.from_url(redis_url)
-    with Connection(conn):
-        w = Worker([Queue("singularis")])
-        w.work(with_scheduler=True)
+    q = Queue("singularis", connection=conn)
+    w = Worker([q], connection=conn)
+    w.work(with_scheduler=True)
 
 
 if __name__ == "__main__":

@@ -15,11 +15,10 @@ import pymupdf
 
 from .parsers import (
     extract_title_and_authors,
-    parse_latex_sources,
     parse_pdf_document,
+    parse_pdf_with_docling_direct,
 )
 from .parsers.utils import slugify
-
 JUNK_TITLE_PAT = re.compile(r'^(title|untitled|document)\b', re.I)
 JUNK_PRODUCER_PAT = re.compile(r'(microsoft\s+word|adobe\s+pdf|libreoffice|pages)\b', re.I)
 ARXIV_CANONICAL_RE = re.compile(r'arxiv\s*[:/ ]\s*(\d{4}\.\d{4,5})(v\d+)?', re.I)
@@ -187,7 +186,12 @@ def _download_arxiv_source(arxiv_id: str, cache_dir: Path) -> Optional[Path]:
     return None
 
 
-def build_s0(pdf_path: str, out_dir: str, *, use_latex: bool = True) -> Dict[str, Any]:
+def build_s0(
+    pdf_path: str,
+    out_dir: str,
+    *,
+    docling: bool = False,
+) -> Dict[str, Any]:
     pdf_path = str(pdf_path)
     out_dir_path = Path(out_dir)
     out_dir_path.mkdir(parents=True, exist_ok=True)
@@ -207,33 +211,36 @@ def build_s0(pdf_path: str, out_dir: str, *, use_latex: bool = True) -> Dict[str
         }
 
         arxiv_id = _find_arxiv_id(pdf_path, doc, first_page_text)
-        core_data: Optional[Dict[str, Any]] = None
 
-        if use_latex and arxiv_id:
-            source_cache = out_dir_path / "_arxiv_cache"
-            source_dir = _download_arxiv_source(arxiv_id, source_cache)
-            if source_dir:
-                latex_result = parse_latex_sources(arxiv_id, source_dir, pdf_metadata)
-                if latex_result:
-                    core_data = latex_result
-                    metadata.update(latex_result.get("metadata", {}))
-
-        if core_data is None:
-            pdf_result = parse_pdf_document(doc)
-            core_data = pdf_result
-            metadata["source_format"] = "pdf"
-            if arxiv_id:
-                metadata.setdefault("arxiv_id", arxiv_id)
+        # Choose parser based on flag
+        if docling:
+            print("📄 Parsing PDF with Docling (direct)...")
+            core_data = parse_pdf_with_docling_direct(pdf_path)
         else:
-            metadata.setdefault("source_format", "latex")
+            print("📄 Parsing PDF with built-in PDF parser...")
+            core_data = parse_pdf_document(doc)
 
-        title_guess, authors_guess = extract_title_and_authors(doc)
-        if not metadata.get("title") and title_guess:
-            metadata["title"] = title_guess
-        if (not metadata.get("author") or len(metadata.get("author", "")) < 3) and authors_guess:
-            metadata["author"] = authors_guess
+        # Merge metadata from extracted core data if present
+        docling_metadata = core_data.get("metadata", {}) if isinstance(core_data, dict) else {}
+        if isinstance(docling_metadata, dict):
+            if docling_metadata.get("title") and not metadata.get("title"):
+                metadata["title"] = docling_metadata["title"]
+            if docling_metadata.get("author") and not metadata.get("author"):
+                metadata["author"] = docling_metadata["author"]
 
-        sections_raw = core_data.get("sections", []) or []
+        metadata["source_format"] = "pdf"
+        if arxiv_id:
+            metadata.setdefault("arxiv_id", arxiv_id)
+
+        # Try to extract better title/authors if metadata is poor
+        if not metadata.get("title") or len(metadata.get("title", "")) < 5:
+            title_guess, authors_guess = extract_title_and_authors(doc)
+            if not metadata.get("title") and title_guess:
+                metadata["title"] = title_guess
+            if (not metadata.get("author") or len(metadata.get("author", "")) < 3) and authors_guess:
+                metadata["author"] = authors_guess
+
+        sections_raw = (core_data.get("sections", []) if isinstance(core_data, dict) else []) or []
         sections: list[Any] = []
         for section in sections_raw:
             if isinstance(section, dict):
@@ -266,8 +273,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--pdf", required=True, help="path to PDF")
     parser.add_argument("--out", required=True, help="output directory for s0.json")
-    parser.add_argument("--no-latex", action="store_true", help="disable LaTeX source parsing")
+    # New flag: choose Docling direct parser; default is built-in PDF parser
+    parser.add_argument("--docling", nargs="?", const="true", default="false", help="use Docling direct parser (true/false), default false")
     args = parser.parse_args()
 
-    s0 = build_s0(args.pdf, args.out, use_latex=False)
+    use_docling = str(args.docling).lower() in ("1", "true", "yes", "y")
+
+    s0 = build_s0(args.pdf, args.out, docling=use_docling)
     print(f"✅ S0 saved to {Path(args.out) / 's0.json'} | sections={len(s0['sections'])} captions={len(s0['captions'])}")
