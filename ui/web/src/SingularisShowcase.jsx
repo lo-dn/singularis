@@ -15,7 +15,7 @@ const STAGE_DESC = {
     finalize: "Packaging previews and final graph payload."
 };
 const stageDisplayName = (n) => STAGE_DISPLAY[n] || n;
-
+const HIGH_CONF_THRESHOLD = 0.99;
 // ── grid & legend helpers (ported from App.jsx) ─────────────────
 const EDGE_STYLES = {
     supports: {color: "#16a34a"},
@@ -124,6 +124,17 @@ function renderLegend(cy) {
   `;
 }
 
+function applyHighConfFilter(cy, on) {
+    if (!cy) return;
+    // ноды с conf ≤ threshold, исключаем Header
+    const low = cy.nodes().filter(n => n.data("type") !== "Header" && ((+n.data("conf") || 0) <= HIGH_CONF_THRESHOLD));
+    if (on) {
+        low.addClass("dim");
+    } else {
+        cy.nodes().removeClass("dim");
+    }
+}
+
 export default function SingularisShowcase() {
     const [file, setFile] = useState(null);
     const [docId, setDocId] = useState("");
@@ -138,6 +149,8 @@ export default function SingularisShowcase() {
     const pdfRef = useRef(null);
     const [pdfOpen, setPdfOpen] = useState(false);
     const pdfUrl = status?.artifacts?.pdf_url || null;
+
+    const [highConfOnly, setHighConfOnly] = useState(false);
 
     useEffect(() => {
         function onKey(e) {
@@ -205,6 +218,10 @@ export default function SingularisShowcase() {
         }, 900);
         return () => clearInterval(t);
     }, [polling, docId]);
+
+    useEffect(() => {
+        applyHighConfFilter(cyRef.current, highConfOnly);
+    }, [highConfOnly]);
 
     // Render graph
     async function renderGraph() {
@@ -333,6 +350,14 @@ export default function SingularisShowcase() {
                     }
                 },
                 {
+                    selector: "node.dim", style: {
+                        "background-color": "#cbd5e1",
+                        "border-color": "#94a3b8",
+                        "color": "#475569",
+                        "opacity": 0.40
+                    }
+                },
+                {
                     selector: "edge.hl",
                     style: {
                         "opacity": 1, "width": 3,
@@ -371,6 +396,7 @@ export default function SingularisShowcase() {
 
             // interactions
             bindInteractions(cy);
+            applyHighConfFilter(cyRef.current, highConfOnly);
         } catch
             (e) {
             console.error(e);
@@ -612,6 +638,7 @@ export default function SingularisShowcase() {
                 )}
             </section>
             <div className="mx-auto mt-3 h-1 w-28 rounded-full bg-emerald-400/70 mb-8"/>
+
             {/* GRAPH: fades in and slides up when visible; progress panel stays above */}
             {status?.state && (
                 <section
@@ -619,6 +646,27 @@ export default function SingularisShowcase() {
                     <h2 className="sr-only">Knowledge Graph</h2>
                     <div ref={graphHostRef}
                          className="h-full w-full rounded-3xl border border-emerald-600/40 bg-slate-900/60 shadow-2xl"/>
+                    {status?.state && (
+                        <section
+                            className={`relative h-[100vh] w-full px-2 pb-10 transition-all duration-700 ${graphVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+                            <div
+                                className="absolute left-4 top-3 z-10 flex items-center gap-3 rounded-lg border border-emerald-600/40 bg-slate-900/70 px-3 py-2">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4 accent-emerald-500"
+                                        checked={highConfOnly}
+                                        onChange={(e) => setHighConfOnly(e.target.checked)}
+                                    />
+                                    <span className="text-emerald-100 text-sm">High conf</span>
+                                </label>
+                            </div>
+
+                            <h2 className="sr-only">Knowledge Graph</h2>
+                            <div ref={graphHostRef}
+                                 className="h-full w-full rounded-3xl border border-emerald-600/40 bg-slate-900/60 shadow-2xl"/>
+                        </section>
+                    )}
                 </section>
             )}
             {/* Modal */}
